@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>FaceTime Fun Draw!</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#1a1a2e;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden}
+h1{font-size:2rem;font-weight:900;background:linear-gradient(135deg,#f7971e,#ffd200);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.25rem}
+.tagline{font-size:.85rem;color:#aaa;margin-bottom:1.5rem}
+.screen{width:100%;max-width:480px;padding:1.25rem;display:none;flex-direction:column;align-items:center;gap:.85rem}
+.screen.active{display:flex}
+input{width:100%;padding:.75rem 1rem;border-radius:12px;border:2px solid #333;background:#16213e;color:#fff;font-size:1rem;outline:none}
+input:focus{border-color:#f7971e}
+input::placeholder{color:#666}
+.btn{width:100%;padding:.85rem;border-radius:12px;border:none;font-size:1rem;font-weight:700;cursor:pointer;transition:opacity .15s,transform .1s}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:linear-gradient(135deg,#f7971e,#ffd200);color:#000}
+.btn-secondary{background:#16213e;color:#fff;border:2px solid #333}
+.btn-danger{background:#e63946;color:#fff}
+.btn-small{padding:.5rem .9rem;font-size:.85rem;border-radius:8px;width:auto}
+.divider{width:100%;display:flex;align-items:center;gap:.75rem;color:#555;font-size:.8rem}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:#333}
+.room-code{font-size:2.5rem;font-weight:900;letter-spacing:.3rem;color:#ffd200;background:#16213e;border-radius:16px;padding:.75rem 1.5rem;border:2px solid #333;user-select:all}
+.players-list{width:100%;background:#16213e;border-radius:12px;padding:.75rem;border:2px solid #333}
+.player-item{display:flex;align-items:center;gap:.5rem;padding:.4rem .5rem;border-radius:8px;font-size:.9rem}
+.player-item:not(:last-child){border-bottom:1px solid #222}
+.dot{width:8px;height:8px;border-radius:50%;background:#4caf50}
+.status-msg{font-size:.8rem;color:#888;text-align:center}
+/* GAME SCREEN */
+#gameScreen{padding:.5rem;max-width:100%;width:100%;height:100vh;justify-content:flex-start;gap:.4rem}
+.game-top{display:flex;justify-content:space-between;align-items:center;width:100%;padding:.25rem .5rem}
+.round-info{font-size:.8rem;color:#aaa}
+.timer{font-size:1.4rem;font-weight:900;color:#ffd200;min-width:40px;text-align:center}
+.timer.urgent{color:#e63946;animation:pulse .5s infinite alternate}
+@keyframes pulse{to{transform:scale(1.15)}}
+.word-display{width:100%;text-align:center;padding:.5rem;background:#16213e;border-radius:12px;font-size:1rem;font-weight:700;letter-spacing:.1rem;border:2px solid #333}
+.word-display.drawing{color:#ffd200;font-size:1.1rem}
+.word-display.guessing{color:#aaa;letter-spacing:.25rem}
+canvas{border-radius:12px;border:2px solid #333;background:#fff;touch-action:none;cursor:crosshair;width:100%;display:block}
+.tools{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;justify-content:center;width:100%}
+.color-btn{width:30px;height:30px;border-radius:50%;border:3px solid transparent;cursor:pointer;flex-shrink:0}
+.color-btn.active{border-color:#fff;transform:scale(1.2)}
+.size-btn{background:#16213e;border:2px solid #333;color:#fff;border-radius:8px;padding:.3rem .6rem;font-size:.8rem;cursor:pointer}
+.size-btn.active{border-color:#ffd200;color:#ffd200}
+.chat-area{width:100%;flex:1;min-height:0;display:flex;flex-direction:column;gap:.4rem;overflow:hidden}
+.messages{flex:1;overflow-y:auto;background:#16213e;border-radius:12px;padding:.5rem;border:2px solid #333;font-size:.85rem;display:flex;flex-direction:column;gap:.3rem;min-height:80px;max-height:140px}
+.msg{padding:.25rem .5rem;border-radius:6px}
+.msg.correct{background:#1b5e20;color:#a5d6a7;font-weight:700}
+.msg.system{color:#888;font-style:italic;font-size:.75rem}
+.msg.chat{color:#ddd}
+.guess-row{display:flex;gap:.5rem}
+.guess-row input{flex:1;padding:.6rem .9rem;font-size:.9rem}
+.guess-row .btn{width:auto;padding:.6rem 1rem}
+/* ROUND END */
+.scoreboard{width:100%;background:#16213e;border-radius:12px;padding:.75rem;border:2px solid #333}
+.score-item{display:flex;justify-content:space-between;align-items:center;padding:.4rem .5rem;border-radius:8px;font-size:.9rem}
+.score-item:not(:last-child){border-bottom:1px solid #222}
+.score-item .pts{color:#ffd200;font-weight:700}
+.medal{font-size:1rem;margin-right:.25rem}
+.big-msg{font-size:1.3rem;font-weight:800;text-align:center}
+.reveal{font-size:1rem;color:#aaa;text-align:center}
+</style>
+</head>
+<body>
+
+<!-- HOME -->
+<div id="homeScreen" class="screen active">
+  <h1>🎨 Draw & Guess!</h1>
+  <p class="tagline">Play with your family over FaceTime</p>
+  <input id="nameInput" placeholder="Your name (e.g. Dad 😄)" maxlength="16">
+  <button class="btn btn-primary" onclick="createRoom()">Create Room</button>
+  <div class="divider">or join one</div>
+  <input id="codeInput" placeholder="Enter room code (e.g. ABCD)" maxlength="4" style="text-transform:uppercase;letter-spacing:.2rem;text-align:center" oninput="this.value=this.value.toUpperCase()">
+  <button class="btn btn-secondary" onclick="joinRoom()">Join Room</button>
+  <p id="homeErr" class="status-msg" style="color:#e63946"></p>
+</div>
+
+<!-- LOBBY -->
+<div id="lobbyScreen" class="screen">
+  <h1>🎨 Draw & Guess!</h1>
+  <p class="tagline">Share this code with your family:</p>
+  <div class="room-code" id="displayCode"></div>
+  <p class="status-msg">Everyone opens this page and enters the code ☝️</p>
+  <button class="btn btn-secondary btn-small" onclick="copyLink()" style="width:auto">📋 Copy Invite Link</button>
+  <div class="players-list" id="playersList"></div>
+  <div style="width:100%;display:flex;gap:.5rem;flex-direction:column">
+    <div style="display:flex;gap:.5rem;align-items:center;justify-content:center">
+      <span style="font-size:.85rem;color:#aaa">Rounds:</span>
+      <button class="btn btn-secondary btn-small" onclick="changeRounds(-1)">−</button>
+      <span id="roundsDisplay" style="font-weight:700;color:#ffd200;min-width:20px;text-align:center">3</span>
+      <button class="btn btn-secondary btn-small" onclick="changeRounds(1)">+</button>
+    </div>
+    <button class="btn btn-primary" id="startBtn" onclick="startGame()" style="display:none">▶ Start Game!</button>
+  </div>
+  <p id="lobbyMsg" class="status-msg">Waiting for host to start...</p>
+</div>
+
+<!-- GAME -->
+<div id="gameScreen" class="screen">
+  <div class="game-top">
+    <span class="round-info" id="roundLabel">Round 1/3</span>
+    <span id="drawerName" style="font-size:.85rem;font-weight:700;color:#ffd200"></span>
+    <span class="timer" id="timerDisplay">60</span>
+  </div>
+  <div class="word-display" id="wordDisplay">Get ready...</div>
+  <canvas id="drawCanvas"></canvas>
+  <div class="tools" id="toolsRow" style="display:none">
+    <div class="color-btn active" style="background:#000" data-color="#000000" onclick="setColor(this)"></div>
+    <div class="color-btn" style="background:#e63946" data-color="#e63946" onclick="setColor(this)"></div>
+    <div class="color-btn" style="background:#f7971e" data-color="#f7971e" onclick="setColor(this)"></div>
+    <div class="color-btn" style="background:#ffd200" data-color="#ffd200" onclick="setColor(this)"></div>
+    <div class="color-btn" style="background:#4caf50" data-color="#4caf50" onclick="setColor(this)"></div>
+    <div class="color-btn" style="background:#2196f3" data-color="#2196f3" onclick="setColor(this)"></div>
+    <div class="color-btn" style="background:#9c27b0" data-color="#9c27b0" onclick="setColor(this)"></div>
+    <div class="color-btn" style="background:#ffffff;border:2px solid #555" data-color="#ffffff" onclick="setColor(this)"></div>
+    <button class="size-btn active" data-size="4" onclick="setSize(this)">S</button>
+    <button class="size-btn" data-size="10" onclick="setSize(this)">M</button>
+    <button class="size-btn" data-size="22" onclick="setSize(this)">L</button>
+    <button class="btn btn-danger btn-small" onclick="clearCanvas()">🗑</button>
+  </div>
+  <div class="chat-area" id="chatArea">
+    <div class="messages" id="messages"></div>
+    <div class="guess-row" id="guessRow" style="display:none">
+      <input id="guessInput" placeholder="Type your guess..." autocomplete="off" onkeydown="if(event.key==='Enter')sendGuess()">
+      <button class="btn btn-primary btn-small" onclick="sendGuess()">Go!</button>
+    </div>
+  </div>
+</div>
+
+<!-- ROUND END -->
+<div id="roundEndScreen" class="screen">
+  <div class="big-msg" id="roundEndMsg"></div>
+  <div class="reveal" id="wordReveal"></div>
+  <div class="scoreboard" id="roundScoreboard"></div>
+  <p class="status-msg" id="roundEndSub"></p>
+</div>
+
+<!-- GAME END -->
+<div id="gameEndScreen" class="screen">
+  <div style="font-size:2rem;font-weight:900;color:#ffd200">Game Over! 🎉</div>
+  <div class="scoreboard" id="finalScoreboard"></div>
+  <button class="btn btn-primary" onclick="playAgain()">Play Again!</button>
+  <button class="btn btn-secondary" onclick="goHome()">Home</button>
+</div>
+
+<script>
+// ─── WORD LIST ──────────────────────────────────────────────────────────────
+const WORDS = [
+  'cat','dog','fish','bird','elephant','lion','frog','butterfly','horse','rabbit',
+  'pizza','ice cream','cake','apple','banana','burger','cookie','sandwich','taco','donut',
+  'house','car','tree','sun','moon','star','cloud','rainbow','mountain','beach',
+  'ball','balloon','book','phone','hat','shoe','glasses','guitar','rocket','robot',
+  'running','swimming','sleeping','jumping','dancing','eating','flying','reading','laughing','crying',
+  'dinosaur','unicorn','mermaid','dragon','superhero','princess','pirate','astronaut','wizard','ninja'
+];
+
+// ─── STATE ──────────────────────────────────────────────────────────────────
+let peer, conn, connections = [];
+let isHost = false;
+let myName = '', roomCode = '', myId = '';
+let players = {}; // id → {name, score}
+let gameState = {
+  round: 0, totalRounds: 3,
+  drawerId: null, word: null,
+  guessedIds: [],
+  timerInt: null, timeLeft: 60
+};
+let drawing = false, lastX = 0, lastY = 0;
+let brushColor = '#000000', brushSize = 4;
+let canvas, ctx;
+let drawBuffer = [];
+let sendInterval = null;
+
+// ─── UTILS ──────────────────────────────────────────────────────────────────
+function randCode(){return Math.random().toString(36).substr(2,4).toUpperCase();}
+function randWord(){return WORDS[Math.floor(Math.random()*WORDS.length)];}
+function maskWord(w){return w.split('').map(c=>c===' '?'  ':'_ ').join('');}
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function addMsg(text,type='chat'){
+  const m=document.getElementById('messages');
+  const d=document.createElement('div');
+  d.className='msg '+type;
+  d.textContent=text;
+  m.appendChild(d);
+  m.scrollTop=m.scrollHeight;
+}
+
+// ─── PEER HELPERS ────────────────────────────────────────────────────────────
+function broadcast(data, excludeId=null){
+  connections.forEach(c=>{
+    if(c.open && c.peer!==excludeId) c.send(data);
+  });
+}
+function sendToHost(data){
+  if(conn && conn.open) conn.send(data);
+}
+function sendToAll(data){
+  if(isHost) broadcast(data);
+  else sendToHost(data);
+}
+
+// ─── HOME ────────────────────────────────────────────────────────────────────
+function createRoom(){
+  const name = document.getElementById('nameInput').value.trim();
+  if(!name){document.getElementById('homeErr').textContent='Enter your name first!';return;}
+  myName=name; isHost=true;
+  roomCode=randCode(); myId='host-'+roomCode;
+  players[myId]={name:myName,score:0};
+  document.getElementById('homeErr').textContent='Connecting...';
+  peer=new Peer('niko-draw-'+roomCode,{debug:0});
+  peer.on('open',()=>{
+    document.getElementById('displayCode').textContent=roomCode;
+    renderPlayers();
+    document.getElementById('startBtn').style.display='block';
+    document.getElementById('lobbyMsg').style.display='none';
+    showScreen('lobbyScreen');
+    document.getElementById('homeErr').textContent='';
+  });
+  peer.on('connection',handleIncoming);
+  peer.on('error',e=>{
+    document.getElementById('homeErr').textContent='Error: '+e.type+'. Try a different name.';
+  });
+}
+
+function joinRoom(){
+  const name=document.getElementById('nameInput').value.trim();
+  const code=document.getElementById('codeInput').value.trim().toUpperCase();
+  if(!name){document.getElementById('homeErr').textContent='Enter your name first!';return;}
+  if(code.length!==4){document.getElementById('homeErr').textContent='Enter the 4-letter room code!';return;}
+  myName=name; isHost=false; roomCode=code;
+  myId='client-'+Math.random().toString(36).substr(2,6);
+  document.getElementById('homeErr').textContent='Joining...';
+  peer=new Peer(undefined,{debug:0});
+  peer.on('open',id=>{
+    conn=peer.connect('niko-draw-'+code,{reliable:true,metadata:{name:myName,id:myId}});
+    conn.on('open',()=>{
+      conn.send({type:'join',name:myName,id:myId});
+      document.getElementById('displayCode').textContent=code;
+      document.getElementById('startBtn').style.display='none';
+      showScreen('lobbyScreen');
+      document.getElementById('homeErr').textContent='';
+    });
+    conn.on('data',handleData);
+    conn.on('error',e=>addMsg('Connection error: '+e,'system'));
+    conn.on('close',()=>addMsg('Lost connection to host.','system'));
+  });
+  peer.on('error',e=>{
+    document.getElementById('homeErr').textContent='Could not connect. Check the code!';
+  });
+}
+
+function handleIncoming(c){
+  connections.push(c);
+  c.on('open',()=>{
+    const meta=c.metadata||{};
+  });
+  c.on('data',data=>{
+    if(data.type==='join'){
+      players[data.id]={name:data.name,score:0};
+      broadcast({type:'playerList',players});
+      renderPlayers();
+      broadcast({type:'sys',msg:data.name+' joined! 👋'});
+    } else if(data.type==='guess'){
+      handleGuess(data.id, data.text);
+    } else if(data.type==='draw'){
+      broadcast(data, data.id);
+      applyDrawData(data);
+    } else if(data.type==='clear'){
+      broadcast(data, data.id);
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+    }
+  });
+  c.on('close',()=>{
+    connections=connections.filter(x=>x!==c);
+  });
+}
+
+function handleData(data){
+  if(data.type==='playerList'){
+    players=data.players;
+    renderPlayers();
+  } else if(data.type==='sys'){
+    addMsg(data.msg,'system');
+  } else if(data.type==='startRound'){
+    startRound(data);
+  } else if(data.type==='draw'){
+    applyDrawData(data);
+  } else if(data.type==='clear'){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+  } else if(data.type==='correct'){
+    addMsg('🎉 '+data.name+' guessed it!','correct');
+    if(data.id===myId) addMsg('You got it! +'+data.pts+' points 🌟','correct');
+  } else if(data.type==='roundEnd'){
+    showRoundEnd(data);
+  } else if(data.type==='gameEnd'){
+    showGameEnd(data);
+  } else if(data.type==='chat'){
+    addMsg(data.name+': '+data.text,'chat');
+  }
+}
+
+// ─── LOBBY ───────────────────────────────────────────────────────────────────
+function renderPlayers(){
+  const list=document.getElementById('playersList');
+  list.innerHTML='<div style="font-size:.75rem;color:#888;margin-bottom:.4rem">Players in room:</div>'+
+    Object.entries(players).map(([id,p])=>
+      `<div class="player-item"><div class="dot"></div>${p.name}${id===myId?' (you)':''}</div>`
+    ).join('');
+}
+
+let totalRounds=3;
+function changeRounds(d){
+  if(!isHost) return;
+  totalRounds=Math.max(1,Math.min(10,totalRounds+d));
+  document.getElementById('roundsDisplay').textContent=totalRounds;
+}
+
+function copyLink(){
+  const url=location.href.split('?')[0]+'?code='+roomCode;
+  navigator.clipboard.writeText(url).then(()=>{
+    const btn=event.target;
+    btn.textContent='✅ Copied!';
+    setTimeout(()=>btn.textContent='📋 Copy Invite Link',2000);
+  }).catch(()=>{
+    prompt('Copy this link:',location.href.split('?')[0]+'?code='+roomCode);
+  });
+}
+
+// ─── GAME START ──────────────────────────────────────────────────────────────
+function startGame(){
+  if(!isHost) return;
+  gameState.round=0;
+  gameState.totalRounds=totalRounds;
+  Object.keys(players).forEach(id=>players[id].score=0);
+  nextRound();
+}
+
+function playAgain(){
+  if(isHost){startGame();}
+  else{showScreen('lobbyScreen');}
+}
+
+function nextRound(){
+  gameState.round++;
+  if(gameState.round>gameState.totalRounds){
+    endGame(); return;
+  }
+  const ids=Object.keys(players);
+  gameState.drawerId=ids[(gameState.round-1)%ids.length];
+  gameState.word=randWord();
+  gameState.guessedIds=[];
+  gameState.timeLeft=60;
+  const payload={
+    type:'startRound',
+    round:gameState.round,
+    totalRounds:gameState.totalRounds,
+    drawerId:gameState.drawerId,
+    drawerName:players[gameState.drawerId]?.name||'?',
+    word:gameState.word,
+    timeLeft:60
+  };
+  broadcast(payload);
+  startRound(payload);
+}
+
+function startRound(data){
+  showScreen('gameScreen');
+  document.getElementById('messages').innerHTML='';
+  document.getElementById('roundLabel').textContent='Round '+data.round+'/'+data.totalRounds;
+  const amDrawing=(data.drawerId===myId);
+  document.getElementById('drawerName').textContent=amDrawing?'You are drawing!':data.drawerName+' is drawing';
+  document.getElementById('wordDisplay').className='word-display '+(amDrawing?'drawing':'guessing');
+  document.getElementById('wordDisplay').textContent=amDrawing?'Draw: '+data.word.toUpperCase():maskWord(data.word);
+  document.getElementById('toolsRow').style.display=amDrawing?'flex':'none';
+  document.getElementById('guessRow').style.display=amDrawing?'none':'flex';
+  document.getElementById('guessInput').disabled=false;
+  gameState.drawerId=data.drawerId;
+  gameState.word=data.word;
+  gameState.guessedIds=[];
+  // Setup canvas
+  initCanvas(); ctx.clearRect(0,0,canvas.width,canvas.height);
+  // Timer
+  clearInterval(gameState.timerInt);
+  gameState.timeLeft=data.timeLeft||60;
+  updateTimer();
+  gameState.timerInt=setInterval(()=>{
+    gameState.timeLeft--;
+    updateTimer();
+    if(gameState.timeLeft<=0){
+      clearInterval(gameState.timerInt);
+      if(isHost) doRoundEnd();
+    }
+  },1000);
+}
+
+function updateTimer(){
+  const el=document.getElementById('timerDisplay');
+  el.textContent=gameState.timeLeft;
+  el.className='timer'+(gameState.timeLeft<=10?' urgent':'');
+}
+
+// ─── GUESSING ────────────────────────────────────────────────────────────────
+function sendGuess(){
+  const input=document.getElementById('guessInput');
+  const text=input.value.trim();
+  if(!text) return;
+  input.value='';
+  if(isHost) handleGuess(myId,text);
+  else sendToHost({type:'guess',id:myId,text});
+}
+
+function handleGuess(fromId, text){
+  if(!isHost) return;
+  const name=players[fromId]?.name||'?';
+  if(gameState.guessedIds.includes(fromId)||fromId===gameState.drawerId) return;
+  const correct=text.toLowerCase().trim()===gameState.word.toLowerCase();
+  if(correct){
+    const pts=Math.max(10,gameState.timeLeft);
+    players[fromId].score+=pts;
+    if(gameState.drawerId && players[gameState.drawerId]) players[gameState.drawerId].score+=5;
+    gameState.guessedIds.push(fromId);
+    const msg={type:'correct',id:fromId,name,pts};
+    broadcast(msg); handleData(msg);
+    if(gameState.guessedIds.length>=Object.keys(players).length-1){
+      clearInterval(gameState.timerInt); doRoundEnd();
+    }
+  } else {
+    const msg={type:'chat',name,text};
+    broadcast(msg); handleData(msg);
+  }
+}
+
+// ─── ROUND END ───────────────────────────────────────────────────────────────
+function doRoundEnd(){
+  if(!isHost) return;
+  const payload={
+    type:'roundEnd',
+    word:gameState.word,
+    players,
+    round:gameState.round,
+    totalRounds:gameState.totalRounds
+  };
+  broadcast(payload);
+  showRoundEnd(payload);
+  setTimeout(()=>nextRound(), 4000);
+}
+
+function showRoundEnd(data){
+  clearInterval(gameState.timerInt);
+  showScreen('roundEndScreen');
+  document.getElementById('roundEndMsg').textContent=
+    data.round<data.totalRounds?'Round '+data.round+' done! 🎨':'Last round done! 🎉';
+  document.getElementById('wordReveal').textContent='The word was: '+data.word.toUpperCase();
+  const sorted=Object.entries(data.players).sort((a,b)=>b[1].score-a[1].score);
+  const medals=['🥇','🥈','🥉'];
+  document.getElementById('roundScoreboard').innerHTML=sorted.map(([id,p],i)=>
+    `<div class="score-item"><span>${medals[i]||'  '} ${p.name}${id===myId?' (you)':''}</span><span class="pts">${p.score} pts</span></div>`
+  ).join('');
+  document.getElementById('roundEndSub').textContent=
+    data.round<data.totalRounds?'Next round starting soon...':'Final results coming up...';
+}
+
+// ─── GAME END ─────────────────────────────────────────────────────────────────
+function endGame(){
+  if(!isHost) return;
+  const payload={type:'gameEnd',players};
+  broadcast(payload);
+  showGameEnd(payload);
+}
+
+function showGameEnd(data){
+  clearInterval(gameState.timerInt);
+  showScreen('gameEndScreen');
+  const sorted=Object.entries(data.players).sort((a,b)=>b[1].score-a[1].score);
+  const medals=['🥇','🥈','🥉'];
+  document.getElementById('finalScoreboard').innerHTML=
+    `<div style="font-size:.75rem;color:#888;margin-bottom:.5rem;text-align:center">Final Scores</div>`+
+    sorted.map(([id,p],i)=>
+      `<div class="score-item"><span>${medals[i]||'  '} ${p.name}${id===myId?' (you)':''}</span><span class="pts">${p.score} pts</span></div>`
+    ).join('');
+}
+
+function goHome(){
+  if(peer) peer.destroy();
+  location.reload();
+}
+
+// ─── CANVAS DRAWING ───────────────────────────────────────────────────────────
+function initCanvas(){
+  canvas=document.getElementById('drawCanvas');
+  ctx=canvas.getContext('2d');
+  const W=canvas.parentElement.clientWidth-24;
+  const H=Math.min(window.innerHeight*0.35,260);
+  canvas.width=W; canvas.height=H;
+  canvas.style.height=H+'px';
+  ctx.lineCap='round'; ctx.lineJoin='round';
+}
+
+function getPos(e){
+  const r=canvas.getBoundingClientRect();
+  const src=e.touches?e.touches[0]:e;
+  return {
+    x:(src.clientX-r.left)*(canvas.width/r.width),
+    y:(src.clientY-r.top)*(canvas.height/r.height)
+  };
+}
+
+function onDown(e){
+  if(gameState.drawerId!==myId) return;
+  e.preventDefault();
+  drawing=true;
+  const {x,y}=getPos(e);
+  lastX=x; lastY=y;
+  ctx.beginPath(); ctx.arc(x,y,brushSize/2,0,Math.PI*2); ctx.fillStyle=brushColor; ctx.fill();
+  drawBuffer.push({t:'d',x,y,c:brushColor,s:brushSize});
+}
+
+function onMove(e){
+  if(!drawing||gameState.drawerId!==myId) return;
+  e.preventDefault();
+  const {x,y}=getPos(e);
+  ctx.beginPath(); ctx.moveTo(lastX,lastY); ctx.lineTo(x,y);
+  ctx.strokeStyle=brushColor; ctx.lineWidth=brushSize; ctx.stroke();
+  drawBuffer.push({t:'m',x,y,lx:lastX,ly:lastY,c:brushColor,s:brushSize});
+  lastX=x; lastY=y;
+}
+
+function onUp(e){
+  if(!drawing) return;
+  e.preventDefault();
+  drawing=false;
+}
+
+function flushDrawBuffer(){
+  if(drawBuffer.length===0) return;
+  const data={type:'draw',id:myId,strokes:drawBuffer};
+  drawBuffer=[];
+  if(isHost) broadcast(data);
+  else sendToHost(data);
+}
+
+function applyDrawData(data){
+  if(!ctx) return;
+  (data.strokes||[]).forEach(s=>{
+    if(s.t==='d'){
+      ctx.beginPath(); ctx.arc(s.x,s.y,s.s/2,0,Math.PI*2); ctx.fillStyle=s.c; ctx.fill();
+    } else if(s.t==='m'){
+      ctx.beginPath(); ctx.moveTo(s.lx,s.ly); ctx.lineTo(s.x,s.y);
+      ctx.strokeStyle=s.c; ctx.lineWidth=s.s; ctx.lineCap='round'; ctx.stroke();
+    }
+  });
+}
+
+function clearCanvas(){
+  if(!ctx) return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const data={type:'clear',id:myId};
+  if(isHost) broadcast(data);
+  else sendToHost(data);
+}
+
+function setColor(el){
+  brushColor=el.dataset.color;
+  document.querySelectorAll('.color-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function setSize(el){
+  brushSize=parseInt(el.dataset.size);
+  document.querySelectorAll('.size-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+}
+
+// ─── CANVAS EVENTS ────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded',()=>{
+  canvas=document.getElementById('drawCanvas');
+  canvas.addEventListener('mousedown',onDown);
+  canvas.addEventListener('mousemove',onMove);
+  canvas.addEventListener('mouseup',onUp);
+  canvas.addEventListener('mouseleave',onUp);
+  canvas.addEventListener('touchstart',onDown,{passive:false});
+  canvas.addEventListener('touchmove',onMove,{passive:false});
+  canvas.addEventListener('touchend',onUp,{passive:false});
+  sendInterval=setInterval(flushDrawBuffer,50);
+
+  // Auto-fill code from URL
+  const params=new URLSearchParams(location.search);
+  if(params.get('code')) document.getElementById('codeInput').value=params.get('code').toUpperCase();
+});
+</script>
+</body>
+</html>

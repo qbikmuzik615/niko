@@ -78,6 +78,40 @@ canvas{border-radius:12px;border:2px solid #333;background:#fff;touch-action:non
   <p id="homeErr" class="status-msg" style="color:#e63946"></p>
 </div>
 
+<!-- AUTO JOIN (no input) -->
+<div id="autoJoinScreen" class="screen">
+  <h1>🎨 Draw & Guess!</h1>
+  <p class="tagline">Joining room...</p>
+  <div style="font-size:3rem;animation:spin 2s linear infinite">⚙️</div>
+  <p id="autoJoinMsg" class="status-msg">Connecting to your family...</p>
+</div>
+
+<!-- SHARE LINK -->
+<div id="shareLinkScreen" class="screen">
+  <h1>🎨 Draw & Guess!</h1>
+  <p class="tagline" style="margin-bottom:.5rem">Share this link with your family:</p>
+  <div style="background:#16213e;border-radius:12px;border:2px dashed #f7971e;padding:1rem;margin-bottom:1rem;word-break:break-all;font-size:.85rem;font-family:monospace;color:#ffd200;user-select:all">
+    <span id="shareUrl"></span>
+  </div>
+  <button class="btn btn-primary" onclick="copyShareLink()">📋 Copy Link</button>
+  <button class="btn btn-secondary" onclick="copyCode()">📋 Copy Code Only</button>
+  <div class="players-list" id="playersList2"></div>
+  <div style="width:100%;display:flex;gap:.5rem;flex-direction:column">
+    <div style="display:flex;gap:.5rem;align-items:center;justify-content:center">
+      <span style="font-size:.85rem;color:#aaa">Rounds:</span>
+      <button class="btn btn-secondary btn-small" onclick="changeRounds(-1)">−</button>
+      <span id="roundsDisplay2" style="font-weight:700;color:#ffd200;min-width:20px;text-align:center">3</span>
+      <button class="btn btn-secondary btn-small" onclick="changeRounds(1)">+</button>
+    </div>
+    <button class="btn btn-primary" id="startBtn2" onclick="startGame()" style="display:none">▶ Start Game!</button>
+  </div>
+  <p id="shareLinkMsg" class="status-msg">Waiting for players to join...</p>
+</div>
+
+<style>
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+
 <!-- LOBBY -->
 <div id="lobbyScreen" class="screen">
   <h1>🎨 Draw & Guess!</h1>
@@ -173,6 +207,8 @@ let brushColor = '#000000', brushSize = 4;
 let canvas, ctx;
 let drawBuffer = [];
 let sendInterval = null;
+let autoMode = null; // 'create' or 'join'
+let autoJoinCode = null;
 
 // ─── UTILS ──────────────────────────────────────────────────────────────────
 function randCode(){return Math.random().toString(36).substr(2,4).toUpperCase();}
@@ -206,6 +242,60 @@ function sendToAll(data){
 }
 
 // ─── HOME ────────────────────────────────────────────────────────────────────
+// ─── AUTO-CREATE MODE ───────────────────────────────────────────────────────
+function autoCreateRoom(){
+  myName='Host'; isHost=true;
+  roomCode=randCode(); myId='host-'+roomCode;
+  players[myId]={name:myName,score:0};
+  document.getElementById('autoJoinMsg').textContent='Setting up game room...';
+
+  peer=new Peer('niko-draw-'+roomCode,{debug:0});
+  peer.on('open',()=>{
+    const baseUrl=location.href.split('?')[0];
+    const joinUrl=baseUrl+'?join='+roomCode;
+    document.getElementById('shareUrl').textContent=joinUrl;
+    document.getElementById('roundsDisplay2').textContent=totalRounds;
+    renderPlayersShareScreen();
+    document.getElementById('startBtn2').style.display='block';
+    showScreen('shareLinkScreen');
+  });
+  peer.on('connection',handleIncoming);
+  peer.on('error',e=>{
+    document.getElementById('autoJoinMsg').textContent='Connection error. Try refreshing.';
+  });
+}
+
+// ─── AUTO-JOIN MODE ─────────────────────────────────────────────────────────
+function autoJoinRoom(){
+  // Generate friendly name
+  const names=['Pal','Buddy','Friend','Guest','Player','Kid','Joy','Champ','Star','Hero'];
+  myName=names[Math.floor(Math.random()*names.length)]+' '+(Object.keys(players).length+1);
+  isHost=false;
+  myId='client-'+Math.random().toString(36).substr(2,6);
+
+  showScreen('autoJoinScreen');
+
+  peer=new Peer(undefined,{debug:0});
+  peer.on('open',id=>{
+    setTimeout(()=>{
+      conn=peer.connect('niko-draw-'+autoJoinCode,{reliable:true,metadata:{name:myName,id:myId}});
+      conn.on('open',()=>{
+        conn.send({type:'join',name:myName,id:myId});
+        document.getElementById('autoJoinMsg').textContent='✅ Connected! Waiting to start...';
+        setTimeout(()=>showScreen('lobbyScreen'),500);
+      });
+      conn.on('data',handleData);
+      conn.on('error',e=>{
+        document.getElementById('autoJoinMsg').textContent='❌ Could not connect. Try again.';
+      });
+      conn.on('close',()=>addMsg('Lost connection to host.','system'));
+    },200);
+  });
+  peer.on('error',e=>{
+    document.getElementById('autoJoinMsg').textContent='❌ Connection error.';
+  });
+}
+
 function createRoom(){
   const name = document.getElementById('nameInput').value.trim();
   if(!name){document.getElementById('homeErr').textContent='Enter your name first!';return;}
@@ -285,6 +375,7 @@ function handleData(data){
   if(data.type==='playerList'){
     players=data.players;
     renderPlayers();
+    if(autoMode==='create') renderPlayersShareScreen();
   } else if(data.type==='sys'){
     addMsg(data.msg,'system');
   } else if(data.type==='startRound'){
@@ -314,11 +405,41 @@ function renderPlayers(){
     ).join('');
 }
 
+function renderPlayersShareScreen(){
+  const list=document.getElementById('playersList2');
+  list.innerHTML='<div style="font-size:.75rem;color:#888;margin-bottom:.4rem">Players in room:</div>'+
+    Object.entries(players).map(([id,p])=>
+      `<div class="player-item"><div class="dot"></div>${p.name}${id===myId?' (you)':''}</div>`
+    ).join('');
+}
+
+function copyShareLink(){
+  const url=document.getElementById('shareUrl').textContent;
+  navigator.clipboard.writeText(url).then(()=>{
+    const btn=event.target;
+    const orig=btn.textContent;
+    btn.textContent='✅ Copied!';
+    setTimeout(()=>btn.textContent=orig,2000);
+  }).catch(()=>alert('Could not copy. Try manual copy.'));
+}
+
+function copyCode(){
+  const url=document.getElementById('shareUrl').textContent;
+  const code=url.split('join=')[1];
+  navigator.clipboard.writeText(code).then(()=>{
+    const btn=event.target;
+    const orig=btn.textContent;
+    btn.textContent='✅ Copied!';
+    setTimeout(()=>btn.textContent=orig,2000);
+  }).catch(()=>alert('Could not copy.'));
+}
+
 let totalRounds=3;
 function changeRounds(d){
   if(!isHost) return;
   totalRounds=Math.max(1,Math.min(10,totalRounds+d));
   document.getElementById('roundsDisplay').textContent=totalRounds;
+  document.getElementById('roundsDisplay2').textContent=totalRounds;
 }
 
 function copyLink(){
@@ -589,9 +710,24 @@ window.addEventListener('DOMContentLoaded',()=>{
   canvas.addEventListener('touchend',onUp,{passive:false});
   sendInterval=setInterval(flushDrawBuffer,50);
 
-  // Auto-fill code from URL
+  // Parse URL params
   const params=new URLSearchParams(location.search);
-  if(params.get('code')) document.getElementById('codeInput').value=params.get('code').toUpperCase();
+
+  // Auto-create mode
+  if(params.get('create')){
+    autoMode='create';
+    autoCreateRoom();
+  }
+  // Auto-join mode
+  else if(params.get('join')){
+    autoMode='join';
+    autoJoinCode=params.get('join').toUpperCase();
+    autoJoinRoom();
+  }
+  // Manual mode
+  else if(params.get('code')){
+    document.getElementById('codeInput').value=params.get('code').toUpperCase();
+  }
 });
 </script>
 </body>

@@ -1,81 +1,98 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#07070f">
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="theme-color" content="#000000"/>
 <title>Sophia's Math Quest</title>
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="css/app.css">
+<link rel="manifest" href="manifest.webmanifest"/>
+<link rel="stylesheet" href="css/app.css"/>
 </head>
 <body>
 
-<canvas id="c"></canvas>
+<canvas id="fluidCanvas"></canvas>
 
 <!-- SPLASH -->
-<div id="splash">
-  <div class="splash-inner">
-    <div class="splash-star">⭐</div>
-    <h1 class="splash-title">Sophia's<br>Math Quest</h1>
-    <p class="splash-sub">Touch the universe to begin ✨</p>
-  </div>
+<div id="splashUi">
+  <h1 id="splashTitle">Sophia's<br>Math Quest</h1>
+  <p id="splashHint">Touch to begin ✨</p>
 </div>
 
 <!-- STAGE SELECT -->
-<div id="stageScreen" class="screen hidden">
-  <header class="top-bar">
-    <span class="player-name">⭐ Sophia</span>
-    <span id="totalXp" class="xp-badge">0 XP</span>
+<div id="stageSelect" class="hidden">
+  <header>
+    <span id="playerLabel">⭐ Sophia</span>
+    <span id="totalXp" class="xp-pill">0 XP</span>
   </header>
-  <h2 class="section-title">Choose Your Quest</h2>
-  <div id="stageGrid" class="stage-grid"></div>
+  <h2 class="pick-title">Choose Your Quest</h2>
+  <div id="stageGrid"></div>
 </div>
 
 <!-- GAME -->
-<div id="gameScreen" class="screen hidden">
-  <header class="top-bar">
-    <button id="backBtn" class="icon-btn" aria-label="Back">←</button>
-    <div class="progress-wrap">
-      <div id="progressBar" class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
-      <span id="qCounter" class="q-counter">1/10</span>
-    </div>
-    <span id="scoreDisplay" class="score-pill">0</span>
+<div id="app" class="hidden">
+  <header>
+    <button id="btnBack" class="icon-btn">←</button>
+    <span id="stageBadge">Stage 1</span>
+    <span id="scoreBadge">0</span>
+    <button id="btnSettings" aria-label="Settings">⚙</button>
   </header>
-
-  <div id="streakBanner" class="streak-banner hidden"></div>
-
-  <div class="question-wrap">
-    <div id="stageBadge" class="stage-badge"></div>
-    <div id="stackDisplay" class="stack-display hidden"></div>
-    <p id="questionText" class="question-text"></p>
-    <div id="answerGrid" class="answer-grid"></div>
-    <div id="hintBox" class="hint-box hidden"></div>
+  <div id="progressRow">
+    <div id="progressBar"><div id="progressFill"></div></div>
+    <span id="qCounter">1/12</span>
   </div>
+  <div id="streakBanner" class="hidden"></div>
+  <main id="questionArea">
+    <div id="questionCard">
+      <div id="stackDisplay" class="hidden"></div>
+      <p id="questionText"></p>
+      <div id="answerButtons"></div>
+      <div id="hintBox" class="hidden"></div>
+    </div>
+  </main>
 </div>
 
 <!-- STAGE COMPLETE -->
-<div id="completeScreen" class="screen hidden">
-  <div class="complete-inner">
-    <div id="completeEmoji" class="complete-emoji"></div>
-    <h2 id="completeTitle" class="complete-title"></h2>
-    <div id="starsRow" class="stars-row"></div>
-    <div class="complete-stats">
-      <div class="stat-box"><span class="stat-num" id="statCorrect"></span><span class="stat-lbl">Correct</span></div>
-      <div class="stat-box"><span class="stat-num" id="statXp"></span><span class="stat-lbl">XP Earned</span></div>
-      <div class="stat-box"><span class="stat-num" id="statStreak"></span><span class="stat-lbl">Best Streak</span></div>
+<div id="stageComplete" class="hidden">
+  <div id="completeCard">
+    <div id="completeEmoji"></div>
+    <h2 id="completeTitle"></h2>
+    <div id="starsRow"></div>
+    <div id="completeStats">
+      <div class="cstat"><span id="statCorrect">0</span><small>Correct</small></div>
+      <div class="cstat"><span id="statXp">0</span><small>XP Earned</small></div>
+      <div class="cstat"><span id="statStreak">0</span><small>Best Streak</small></div>
     </div>
-    <button id="nextStageBtn" class="btn btn-primary">Next Quest →</button>
-    <button id="retryBtn" class="btn btn-ghost">Try Again</button>
-    <button id="homeBtn" class="btn btn-ghost">Quest Map</button>
+    <button id="btnNext" class="cta-btn">Next Quest →</button>
+    <button id="btnRetry" class="ghost-btn">Try Again</button>
+    <button id="btnHome" class="ghost-btn">Quest Map</button>
   </div>
 </div>
 
-<script src="js/fluid.js"></script>
+<!-- SETTINGS -->
+<aside id="settingsPanel" class="hidden">
+  <h3>Settings</h3>
+  <button id="btnCloseSettings">✕</button>
+  <section>
+    <h4>Game</h4>
+    <div class="setting-row"><span>Sound</span><button id="tglSound" class="toggle on"></button></div>
+  </section>
+  <section>
+    <h4>Fluid</h4>
+    <div class="setting-row"><span>Start blank</span><button id="tglStartBlank" class="toggle on"></button></div>
+    <div class="setting-row"><span>Bloom glow</span><button id="tglBloom" class="toggle on"></button></div>
+    <div class="setting-row"><span>Swirl power</span><input id="rngSwirl" type="range" min="1" max="10" value="6"/></div>
+    <div class="setting-row"><span>Rainbow speed</span><input id="rngRainbow" type="range" min="1" max="10" value="5"/></div>
+    <div class="setting-row"><span>Visible time</span><input id="rngVisible" type="range" min="0.90" max="0.999" step="0.001" value="0.985"/></div>
+    <div class="setting-row"><span>Color rotation</span><input id="rngColorSpeed" type="range" min="0.02" max="0.5" step="0.01" value="0.12"/></div>
+    <div class="setting-row"><span>Glow intensity</span><input id="rngBloom" type="range" min="0" max="1.5" step="0.05" value="0.7"/></div>
+    <div class="setting-row"><span>Splat radius</span><input id="rngRadius" type="range" min="0.05" max="0.35" step="0.01" value="0.18"/></div>
+    <div class="setting-row"><span>Vorticity</span><input id="rngVorticity" type="range" min="0" max="50" step="1" value="22"/></div>
+  </section>
+</aside>
+
 <script src="js/questions.js"></script>
-<script src="js/game.js"></script>
-<script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/niko/sophia/sw.js',{scope:'/niko/sophia/'});</script>
+<script type="module" src="js/app.js"></script>
 </body>
 </html>

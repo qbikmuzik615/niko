@@ -1,0 +1,36 @@
+name: Sync Sophia's Math Quest to smq-pwa
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'sophia/**'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync to smq-pwa
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -z "$GH_PAT" ]; then
+            echo "::notice::Add GH_PAT secret to niko repo to enable smq-pwa auto-sync"
+            exit 0
+          fi
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git clone https://x-access-token:${GH_PAT}@github.com/qbikmuzik615/smq-pwa.git /tmp/smq-pwa
+          mkdir -p /tmp/smq-pwa/css /tmp/smq-pwa/js
+          cp sophia/index.html       /tmp/smq-pwa/index.html
+          cp sophia/css/app.css      /tmp/smq-pwa/css/app.css
+          cp sophia/js/fluid-simulation.js /tmp/smq-pwa/js/fluid-simulation.js
+          cp sophia/js/app.js        /tmp/smq-pwa/js/app.js
+          cp sophia/js/questions.js  /tmp/smq-pwa/js/questions.js
+          cd /tmp/smq-pwa
+          git add -A
+          git diff --staged --quiet && echo "Nothing changed" || \
+            (git commit -m "Sync Sophia's Math Quest from niko [auto]" && git push)
